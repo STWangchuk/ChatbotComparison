@@ -1,0 +1,263 @@
+---
+title: "Chatbot Ratings"
+format: pdf
+editor: visual
+---
+
+## Introduction
+
+Chatbot Arena (lmarena.ai) is "an open-source platform for evaluating AI through human preference, developed by researchers at UC Berkeley [SkyLab](https://sky.cs.berkeley.edu/) and [LMSYS](https://lmsys.org/)." On the website <https://lmarena.ai/>, users can converse with two LLMs on any topic they choose. Users can then vote on which response they prefer (Model A or Model B) or can choose "Tie" or "Both bad" if they don't have a preference for either model. The LLMs are initially anonymous, but are revealed to the user after they vote.
+
+## Data
+
+The developers of this site provide data [here](https://huggingface.co/datasets/lmarena-ai/arena-human-preference-140k) on 140K conversations with pairwise human preferences. You can find this data in [this shared folder](https://yaleedu-my.sharepoint.com/:f:/g/personal/brian_macdonald_yale_edu/Eqo7cptmHAZAjNMv2F1dCj4BhZzs17e4hkfxbH8tMxLnwQ?e=Oo1DNN). There are 7 `.parquet` files. There is a README file in the GitHub repo that gives details about the data.
+
+Each row is a matchup between two chat bots (e.g. Gemini 2.5 Pro vs Claude Sonnet 4), and the columns indicate a conversation ID, the names of the two models, who the user selected as the winner of the matchup, a common query that the two models were given, the category of the prompt (creative writing, math, code, etc.) and other information. See the README file for more details.
+
+## Question
+
+Which chatbot(s) appears to perform best in the eyes of the judges/users? In a matchup between any two models Model A and Model B, what are the outcome probabilities? How do these change if you focus on specific categories (e.g. writing, math, code, etc.) of prompts? Can you think of any reason the data may not be reliable, or any way this rating system could be "gamed"?
+
+## Submission
+
+Submit a PDF report with your code and analysis to Gradescope.
+
+
+
+
+
+
+
+Cleaning the data below. Don't rerun this:
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(tibble)
+library(arrow) 
+library(readr) 
+library(ggplot2)
+library(viridis)
+
+# Cleaning data below:
+# Clean_parquet <- function(data) {
+#   clean_data <- data %>%
+#     select(
+#       -c(conversation_a, conversation_b, timestamp, evaluation_session_id, full_conversation),
+#       -matches("conv_meta")
+#     )
+#   return(clean_data)
+# }
+# 
+# flatten_tibble <- function(df, sep = "_") {
+#   while (any(sapply(df, tibble::is_tibble))) {
+#     df <- df %>%
+#       unnest_wider(where(tibble::is_tibble), names_sep = sep)
+#   }
+#   return(df)
+# }
+# 
+# parquet_folder <- "data"
+# parquet_files <- list.files(parquet_folder, pattern = "\\.parquet$", full.names = TRUE)
+# 
+# all_data <- map_dfr(parquet_files, function(file) {
+#   message("Processing: ", file)
+#   data <- read_parquet(file)
+#   data <- Clean_parquet(data)
+#   data <- flatten_tibble(data)
+#   return(data)
+# })
+# 
+# write_csv(all_data, "combined_clean_flat.csv")
+```
+
+```{r}
+final_data <- read.csv("combined_clean_flat.csv")
+
+final_data <- final_data %>%
+  mutate(model_a_orig = model_a, model_b_orig = model_b) %>%
+  pivot_longer(
+    cols = c(model_a, model_b),
+    names_to = "model_type",
+    values_to = "model"
+  ) %>%
+  mutate(
+    model_outcome = case_when(
+      winner == model_type ~ "won",
+      winner %in% c("tie", "both_bad") ~ winner,
+      TRUE ~ "lost"
+    ),
+    opponent = if_else(model_type == "model_a", model_b_orig, model_a_orig)
+  ) %>%
+  select(-model_a_orig, -model_b_orig, - winner, -id)
+
+final_data <- final_data[seq(1, nrow(final_data), by = 2), ]
+final_data <- (filter(final_data, !(model == opponent)))
+
+model_perspective <- final_data %>%
+  rename(model_name = model) %>%
+  select(model_name, model_outcome)
+
+opponent_perspective <- final_data %>%
+  rename(model_name = opponent) %>%
+  mutate(model_outcome = case_when(
+    model_outcome == "won" ~ "lost",
+    model_outcome == "lost" ~ "won",
+    model_outcome == "tie" ~ "tie",
+    model_outcome == "both_bad" ~ "both_bad"
+  )) %>%
+  select(model_name, model_outcome)
+
+all_games <- bind_rows(model_perspective, opponent_perspective)
+
+win_rates <- all_games %>%
+  group_by(model_name) %>%
+  summarise(
+    total_games = n(),
+    wins = sum(model_outcome == "won") + sum(model_outcome == "tie"),
+    losses = sum(model_outcome == "lost") + sum(model_outcome == "both_bad"),
+    win_rate = (sum(model_outcome == "won") + sum(model_outcome == "tie")) / n()
+  ) %>%
+  arrange(desc(win_rate))
+
+print(win_rates)
+
+```
+
+
+```{r}
+final_data <- read.csv("combined_clean_flat.csv")
+final_data_awin = final_data %>% filter(winner == 'model_a')
+final_data_bwin = final_data %>% filter(winner == 'model_b')
+final_data_tie = final_data %>% filter(winner == 'tie')
+final_data_bothbad = final_data %>% filter(winner == 'both_bad')
+
+results <- list()
+
+for (model in unique(final_data_awin$model_a)) {
+  temp <- final_data_awin %>%
+    filter(model_a == model) %>%
+    count(model_b) %>%
+    pivot_wider(
+      names_from = model_b,
+      values_from = n,
+      values_fill = 0
+    ) %>%
+    mutate(model = model) # add column directly
+  
+  results[[model]] <- temp
+}
+
+loss_data <- bind_rows(results)
+
+results_b <- list()
+
+for (model in unique(final_data_bwin$model_b)) {
+  temp <- final_data_bwin %>%
+    filter(model_b == model) %>%
+    count(model_a) %>%
+    pivot_wider(
+      names_from = model_a,
+      values_from = n,
+      values_fill = 0
+    ) %>%
+    mutate(model = model)
+  
+  results_b[[model]] <- temp
+}
+
+loss_data_b <- bind_rows(results_b)
+
+loss_data <- loss_data %>%
+  relocate(model, .before = everything())
+loss_data_b <- loss_data_b %>%
+  relocate(model, .before = everything())
+
+loss_data <- loss_data %>%
+  select(model, all_of(loss_data$model))
+loss_data_b <- loss_data_b %>%
+  select(model, all_of(loss_data$model))
+loss_data_b <- loss_data_b %>%
+  slice(match(loss_data$model, loss_data_b$model))
+
+models <- loss_data$model
+loss_data <- loss_data %>%
+  select(-model)
+loss_data <- as.data.frame(sapply(loss_data, as.numeric))
+
+loss_data_b <- loss_data_b %>%
+  select(-model)
+loss_data_b <- as.data.frame(sapply(loss_data_b, as.numeric))
+
+loss_data = loss_data + loss_data_b
+
+n <- nrow(loss_data)
+win_pct <- matrix(NA, n, n, dimnames = list(rownames(loss_data), colnames(loss_data)))
+for (i in 1:n) {
+  for (j in 1:n) {
+    if (i != j & !is.na(loss_data[i, j]) & !is.na(loss_data[j, i])) {
+      total_matches <- loss_data[i, j] + loss_data[j, i]
+      if (total_matches > 0) {
+        win_pct[i, j] <- loss_data[i, j] / total_matches
+      } else {
+        win_pct[i, j] <- NA
+      }
+    }
+  }
+}
+
+win_pct_df <- as.data.frame(win_pct)
+win_pct_df <- cbind(models, win_pct_df)
+```
+
+
+```{r}
+bt_data <- final_data %>%
+  filter(winner %in% c("model_a", "model_b")) %>%
+  mutate(result = ifelse(winner == "model_a", 1, 0)) %>%
+  select(model_a, model_b, result)
+
+models <- sort(unique(c(bt_data$model_a, bt_data$model_b)))
+safe_names <- make.names(models)  
+n_models <- length(models)
+n_matches <- nrow(bt_data)
+
+design_mat <- matrix(0, nrow = n_matches, ncol = n_models,
+                     dimnames = list(NULL, safe_names))
+
+for (i in seq_len(n_matches)) {
+  a <- bt_data$model_a[i]
+  b <- bt_data$model_b[i]
+  design_mat[i, make.names(a)] <- 1
+  design_mat[i, make.names(b)] <- -1
+}
+
+bt_design_df <- as.data.frame(design_mat, stringsAsFactors = FALSE)
+bt_design_df$result <- as.numeric(bt_data$result) 
+
+bt_manual <- glm(result ~ . , data = bt_design_df, family = binomial)
+
+coefs <- coef(bt_manual)
+
+coef_no_intercept <- coefs[names(coefs) != "(Intercept)"]
+
+abilities <- data.frame(
+  model = models,
+  coef_name = safe_names,
+  ability = as.numeric(coef_no_intercept[safe_names])
+)
+
+
+abilities$ability[is.na(abilities$ability)] <- 0
+
+abilities$ability <- abilities$ability - mean(abilities$ability)
+
+abilities <- abilities %>% arrange(desc(ability))
+abilities <- select(abilities, -c(coef_name))
+print(abilities)
+```
+
+
+
+
