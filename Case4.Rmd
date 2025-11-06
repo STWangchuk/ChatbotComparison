@@ -140,6 +140,7 @@ loss_data_b <- loss_data_b %>%
 loss_data_b <- as.data.frame(sapply(loss_data_b, as.numeric))
 
 loss_data = loss_data + loss_data_b
+loss_data <- cbind(models, loss_data)
 ```
 
 ```{r}
@@ -164,6 +165,7 @@ for (i in 1:n) {
 win_pct_df <- as.data.frame(win_pct)
 win_pct_df <- cbind(models, win_pct_df)
 ```
+
 
 
 
