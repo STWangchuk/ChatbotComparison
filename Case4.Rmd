@@ -140,13 +140,11 @@ loss_data_b <- loss_data_b %>%
 loss_data_b <- as.data.frame(sapply(loss_data_b, as.numeric))
 
 loss_data = loss_data + loss_data_b
-loss_data <- cbind(models, loss_data)
 ```
 
 ```{r}
 n <- nrow(loss_data)
 win_pct <- matrix(NA, n, n, dimnames = list(rownames(loss_data), colnames(loss_data)))
-#set diagonals to 0
 # Compute pairwise win percentages
 for (i in 1:n) {
   for (j in 1:n) {
