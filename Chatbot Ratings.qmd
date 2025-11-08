@@ -449,6 +449,51 @@ results_ability_creative_writing <- analyze_chatbot_data(temp_final_data,
 results_ability_creative_writing$heatmap
 ```
 
+```{r}
+plot_ability_scores <- function(results_object, category_name) {
+  # Get top 10 models from the overall ranking, not specific
+  top_10_models <- results_ability$abilities %>%
+    head(10) %>%
+    pull(model)
+  
+  plot_data <- results_object$abilities %>%
+    filter(model %in% top_10_models)
+
+  plot_data <- plot_data %>%
+    mutate(model = factor(model, levels = top_10_models[top_10_models %in% plot_data$model]))
+
+  p <- ggplot(plot_data, aes(x = model, y = ability, fill = ability)) +
+    geom_bar(stat = "identity", color = "black", linewidth = 0.3) +
+    geom_text(aes(label = sprintf("%.3f", ability)), 
+              vjust = -0.5, size = 3.5, fontface = "bold") +
+    scale_fill_viridis(option = "plasma") +
+    labs(
+      title = paste0("Bradley-Terry Ability Scores: ", category_name),
+      subtitle = "Top 10 Models (based on overall ranking)",
+      x = "Model",
+      y = "Ability Score"
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+      plot.subtitle = element_text(hjust = 0.5, size = 11),
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 9),
+      axis.text.y = element_text(size = 10),
+      legend.position = "none"
+    )
+  
+  return(p)
+}
+
+plot_ability_scores(results_ability, "Everything (Overall)")
+plot_ability_scores(results_ability_code, "Coding")
+plot_ability_scores(results_ability_math, "Mathematics")
+plot_ability_scores(results_ability_RW, "Real World")
+plot_ability_scores(results_ability_problem_solving, "Problem Solving")
+plot_ability_scores(results_ability_creativity, "Creativity")
+plot_ability_scores(results_ability_complex, "Complex")
+plot_ability_scores(results_ability_creative_writing, "Creative Writing")
+```
 
 
 
